@@ -26,8 +26,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -651,7 +650,6 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const auth = firebase.auth();
 
 /* ━━━━━━━━ FIREBASE APP CHECK ━━━━━━━━
    হ্যাকার ও bot থেকে Firestore রক্ষা করে।
@@ -659,7 +657,15 @@ const auth = firebase.auth();
    তারপর 'YOUR_RECAPTCHA_V3_SITE_KEY' জায়গায় আপনার key বসান।
    Firebase Console → App Check → Firestore → Enforce বাটন চাপুন।
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-// App Check disabled
+try {
+  const appCheck = firebase.appCheck();
+  appCheck.activate(
+    new firebase.appCheck.ReCaptchaV3Provider('YOUR_RECAPTCHA_V3_SITE_KEY'),
+    true
+  );
+} catch(e) {
+  console.warn('App Check init skipped (key not configured):', e.message);
+}
 
 /* ━━━━━━━━ OFFLINE PERSISTENCE ━━━━━━━━ */
 db.enablePersistence({synchronizeTabs: true}).catch(err => {
@@ -844,49 +850,16 @@ const FB = {
     return d.exists ? d.data() : {id:'admin', password:'admin123'};
   },
   async login(id, pw, role){
-    const email = `${id}@somiti.local`;
-    try {
-      // Firebase Auth দিয়ে sign in
-      await auth.signInWithEmailAndPassword(email, pw);
-    } catch(authErr) {
-      // Firebase Auth fail হলে → নতুন user হতে পারে, Firestore থেকে verify করে create করি
-      if(authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential' || authErr.code === 'auth/invalid-email'){
-        // Firestore থেকে password check করে Firebase Auth account তৈরি করি
-        let firestoreOk = false;
-        if(role === 'admin'){
-          const a = await this.getAdmin();
-          if(a.id == id && a.password == pw) firestoreOk = true;
-        } else {
-          const d = await db.collection('members').doc(id).get();
-          if(d.exists && d.data().password == pw) firestoreOk = true;
-        }
-        if(firestoreOk){
-          try {
-            await auth.createUserWithEmailAndPassword(email, pw);
-          } catch(createErr) {
-            if(createErr.code !== 'auth/email-already-in-use') {
-              return {success:false, message:'Auth তৈরি ব্যর্থ: '+createErr.message};
-            }
-            // already exists — wrong password case
-            return {success:false, message:'পাসওয়ার্ড ভুল'};
-          }
-        } else {
-          return {success:false, message:'ভুল আইডি বা পাসওয়ার্ড'};
-        }
-      } else if(authErr.code === 'auth/wrong-password'){
-        return {success:false, message:'পাসওয়ার্ড ভুল'};
-      } else {
-        return {success:false, message:'ভুল আইডি বা পাসওয়ার্ড'};
-      }
-    }
-    // Auth সফল — Firestore থেকে user data নিই
     if(role === 'admin'){
       const a = await this.getAdmin();
-      return {success:true, role:'admin', name:a.name||'অ্যাডমিন'};
+      if(a.id == id && a.password == pw) return {success:true, role:'admin', name:a.name||'অ্যাডমিন'};
+      return {success:false, message:'ভুল আইডি বা পাসওয়ার্ড'};
     } else {
       const d = await db.collection('members').doc(id).get();
       if(!d.exists) return {success:false, message:'সদস্য পাওয়া যায়নি'};
-      return {success:true, role:'member', member:d.data()};
+      const m = d.data();
+      if(m.password == pw) return {success:true, role:'member', member:m};
+      return {success:false, message:'পাসওয়ার্ড ভুল'};
     }
   },
   async list(coll, orderBy='timestamp'){
@@ -1114,12 +1087,7 @@ function sidebarHTML(){
   </aside>`;
 }
 
-function logout(){
-  try{localStorage.removeItem('somiti_session');}catch(e){}
-  try{auth.signOut();}catch(e){}
-  S = {...S, page:'login', role:null, user:null, history:[], menuOpen:false};
-  render();
-}
+function logout(){ try{localStorage.removeItem('somiti_session');}catch(e){} S = {...S, page:'login', role:null, user:null, history:[], menuOpen:false}; render(); }
 async function askLogout(){
   const ok = await confirmAct('আপনি কি লগআউট করতে চান?', {title:'লগআউট নিশ্চিতকরণ', icon:'🚪', okText:'লগআউট', okClass:'danger'});
   if(ok) logout();
@@ -1154,7 +1122,7 @@ function pgLogin(){
           <button class="rtab ${S.loginRole==='admin'?'on':''}" onclick="S.loginRole='admin';render()">👔 অ্যাডমিন</button>
           <button class="rtab ${S.loginRole==='member'?'on':''}" onclick="S.loginRole='member';render()">👤 সদস্য</button>
         </div>
-        <div class="fg lg-fg"><label>আইডি</label><input class="fi" id="lid" placeholder="${S.loginRole==='admin'?'admin':'সদস্য আইডি'}"></div>
+        <div class="fg lg-fg"><label>আইডি</label><input class="fi" id="lid" placeholder="${S.loginRole==='admin'?'আইডি':'সদস্য আইডি'}"></div>
         <div class="fg lg-fg"><label>পাসওয়ার্ড</label><input type="password" class="fi" id="lpw" placeholder="••••••••"></div>
         <button class="btn btn-p btn-blk lg-btn" onclick="doLogin()"><span>🔐 লগইন করুন</span></button>
         <p style="text-align:center;margin-top:14px"><a href="javascript:void(0)" onclick="openForgotPw()" style="font-size:13px;color:var(--p);text-decoration:none;font-weight:600">🔑 পাসওয়ার্ড ভুলে গেছেন?</a></p>
@@ -1393,29 +1361,21 @@ async function doLogin(){
     }
   }catch(e){
     showL(false);
-    // Network error কিনা চেক করি
-    const isOffline = !navigator.onLine;
-    const isNetworkErr = e.code==='auth/network-request-failed' || e.message?.includes('network');
-    if(isOffline || isNetworkErr){
-      // Offline fallback — session থেকে role check
-      try{
-        const sess = JSON.parse(localStorage.getItem('somiti_session')||'null');
-        if(sess && sess.role === role){
-          toast('অফলাইন মোডে লগইন (সীমিত ডেটা)','ok');
-          if(sess.role==='admin'){
-            nav('adminDash',{role:'admin',user:sess.user,history:[]});
-          } else {
-            nav('memberDash',{role:'member',user:sess.user,history:[]});
-            setTimeout(showPushOnLogin, 600);
-          }
+    // Offline fallback — session থেকে role check (password নেই)
+    try{
+      const sess = JSON.parse(localStorage.getItem('somiti_session')||'null');
+      if(sess && sess.role === role){
+        toast('অফলাইন মোডে লগইন (সীমিত ডেটা)','ok');
+        if(sess.role==='admin'){
+          nav('adminDash',{role:'admin',user:sess.user,history:[]});
         } else {
-          toast('অফলাইন — আগে অনলাইনে একবার লগইন করুন','err');
+          nav('memberDash',{role:'member',user:sess.user,history:[]});
+          setTimeout(showPushOnLogin, 600);
         }
-      }catch(ex){ toast('নেটওয়ার্ক সমস্যা: '+e.message,'err'); }
-    } else {
-      // আসল error দেখাই
-      toast('লগইন ত্রুটি: '+(e.message||e.code||e),'err');
-    }
+      } else {
+        toast('অফলাইন — আগে অনলাইনে একবার লগইন করুন','err');
+      }
+    }catch(ex){ toast('ত্রুটি: '+e.message,'err'); }
   }
 }
 
@@ -4563,9 +4523,8 @@ async function saveSettings(){
 }
 async function saveAdmin(){
   const pw = document.getElementById('a_pw').value;
-  const newId = document.getElementById('a_id').value.trim();
   const d = {
-    id: newId,
+    id: document.getElementById('a_id').value.trim(),
     name: document.getElementById('a_name').value.trim(),
     email: (document.getElementById('a_email')?.value||'').trim()
   };
@@ -4574,15 +4533,6 @@ async function saveAdmin(){
   showL(true);
   try{
     await db.collection('config').doc('admin').set(d,{merge:true});
-    // Firebase Auth-এও password update করি (যদি নতুন password দেওয়া হয়)
-    if(pw){
-      try{
-        const user = auth.currentUser;
-        if(user) await user.updatePassword(pw);
-      }catch(authErr){
-        console.warn('Auth password update failed:', authErr.message);
-      }
-    }
     showL(false); toast('সিকিউরিটি আপডেট হয়েছে!');
   }catch(e){showL(false);toast(e.message,'err')}
 }
@@ -5731,16 +5681,7 @@ async function changeMyPassword(){
   if(newPw === oldPw) return toast('নতুন পাসওয়ার্ড বর্তমানটির মতই','err');
   try{
     showL(true);
-    // Firestore-এ password update
     await db.collection('members').doc(S.user.id).update({password:newPw});
-    // Firebase Auth-এও password update
-    try{
-      const user = auth.currentUser;
-      if(user) await user.updatePassword(newPw);
-    }catch(authErr){
-      // Auth update ব্যর্থ হলেও চলবে (Firestore update সফল হয়েছে)
-      console.warn('Auth password update failed:', authErr.message);
-    }
     S.user.password = newPw;
     showL(false);
     toast('পাসওয়ার্ড সফলভাবে পরিবর্তন হয়েছে','ok');
