@@ -27,7 +27,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -659,15 +659,7 @@ const auth = firebase.auth();
    তারপর 'YOUR_RECAPTCHA_V3_SITE_KEY' জায়গায় আপনার key বসান।
    Firebase Console → App Check → Firestore → Enforce বাটন চাপুন।
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-try {
-  const appCheck = firebase.appCheck();
-  appCheck.activate(
-    new firebase.appCheck.ReCaptchaV3Provider('YOUR_RECAPTCHA_V3_SITE_KEY'),
-    true
-  );
-} catch(e) {
-  console.warn('App Check init skipped (key not configured):', e.message);
-}
+// App Check disabled
 
 /* ━━━━━━━━ OFFLINE PERSISTENCE ━━━━━━━━ */
 db.enablePersistence({synchronizeTabs: true}).catch(err => {
@@ -1401,21 +1393,29 @@ async function doLogin(){
     }
   }catch(e){
     showL(false);
-    // Offline fallback — session থেকে role check (password নেই)
-    try{
-      const sess = JSON.parse(localStorage.getItem('somiti_session')||'null');
-      if(sess && sess.role === role){
-        toast('অফলাইন মোডে লগইন (সীমিত ডেটা)','ok');
-        if(sess.role==='admin'){
-          nav('adminDash',{role:'admin',user:sess.user,history:[]});
+    // Network error কিনা চেক করি
+    const isOffline = !navigator.onLine;
+    const isNetworkErr = e.code==='auth/network-request-failed' || e.message?.includes('network');
+    if(isOffline || isNetworkErr){
+      // Offline fallback — session থেকে role check
+      try{
+        const sess = JSON.parse(localStorage.getItem('somiti_session')||'null');
+        if(sess && sess.role === role){
+          toast('অফলাইন মোডে লগইন (সীমিত ডেটা)','ok');
+          if(sess.role==='admin'){
+            nav('adminDash',{role:'admin',user:sess.user,history:[]});
+          } else {
+            nav('memberDash',{role:'member',user:sess.user,history:[]});
+            setTimeout(showPushOnLogin, 600);
+          }
         } else {
-          nav('memberDash',{role:'member',user:sess.user,history:[]});
-          setTimeout(showPushOnLogin, 600);
+          toast('অফলাইন — আগে অনলাইনে একবার লগইন করুন','err');
         }
-      } else {
-        toast('অফলাইন — আগে অনলাইনে একবার লগইন করুন','err');
-      }
-    }catch(ex){ toast('ত্রুটি: '+e.message,'err'); }
+      }catch(ex){ toast('নেটওয়ার্ক সমস্যা: '+e.message,'err'); }
+    } else {
+      // আসল error দেখাই
+      toast('লগইন ত্রুটি: '+(e.message||e.code||e),'err');
+    }
   }
 }
 
@@ -2053,7 +2053,7 @@ async function pgMemberProfile(){
     </div>
 
     <div class="card">
-      <div class="ch"><div class="ct">👨👩👧 নমিনী তথ্য</div></div>
+      <div class="ch"><div class="ct">👨‍👩‍👧 নমিনী তথ্য</div></div>
       <div class="cb" style="padding:8px 16px">
         <table style="width:100%;border-collapse:collapse;font-size:14px">
           ${row('নমিনীর নাম', m.nomineeName)}
@@ -2166,7 +2166,7 @@ function pgAddMember(){
     </div>
 
     <div class="fsect">
-      <div class="fsect-h s2">👨👩👧 নমিনী তথ্য</div>
+      <div class="fsect-h s2">👨‍👩‍👧 নমিনী তথ্য</div>
       <div class="fsect-b">
         <div class="frow">
           <div class="fg"><label>নমিনীর নাম</label><input class="fi" id="m_nomName" value="${esc(e.nomineeName||'')}" placeholder="নমিনীর পূর্ণ নাম"></div>
