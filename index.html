@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>Brothers Business Group</title>
+<title> ব্রাদার্স বিজনেস গ্রুপ </title>
 <style>
 @font-face{
   font-family:'SolaimanLipi';
@@ -1122,7 +1122,7 @@ function pgLogin(){
           <button class="rtab ${S.loginRole==='admin'?'on':''}" onclick="S.loginRole='admin';render()">👔 অ্যাডমিন</button>
           <button class="rtab ${S.loginRole==='member'?'on':''}" onclick="S.loginRole='member';render()">👤 সদস্য</button>
         </div>
-        <div class="fg lg-fg"><label>আইডি</label><input class="fi" id="lid" placeholder="${S.loginRole==='admin'?অ্যাডমিন আইডি':'সদস্য আইডি'}"></div>
+        <div class="fg lg-fg"><label>আইডি</label><input class="fi" id="lid" placeholder="${S.loginRole==='admin'?'অ্যাডমিন আইডি':'সদস্য আইডি'}"></div>
         <div class="fg lg-fg"><label>পাসওয়ার্ড</label><input type="password" class="fi" id="lpw" placeholder="••••••••"></div>
         <button class="btn btn-p btn-blk lg-btn" onclick="doLogin()"><span>🔐 লগইন করুন</span></button>
         <p style="text-align:center;margin-top:14px"><a href="javascript:void(0)" onclick="openForgotPw()" style="font-size:13px;color:var(--p);text-decoration:none;font-weight:600">🔑 পাসওয়ার্ড ভুলে গেছেন?</a></p>
